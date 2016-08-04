@@ -50,7 +50,7 @@ object Main {
 
       ids.cache()
 
-      val texts = ids.map(pairtreeToText(_, pairtreeRootPath).map(_._2))
+      val texts = ids.map(pairtreeToText(_, pairtreeRootPath)(Codec.UTF8).map(_._2))
       val normalizedTexts = texts.map(_.map(normalizeText))
       val occurrences = normalizedTexts.map(_.map(countOccurrences(keywords, _)))
 
