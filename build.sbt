@@ -27,8 +27,8 @@ lazy val commonSettings = Seq(
 lazy val `count-occurrences` = (project in file(".")).
   enablePlugins(GitVersioning, GitBranchPrompt, JavaAppPackaging).
   settings(commonSettings: _*).
-  //settings(spark("2.0.0"): _*).
-  settings(spark_dev("2.0.0"): _*).
+  settings(spark("2.0.0"): _*).
+  //settings(spark_dev("2.0.0"): _*).
   settings(
     name := "count-occurrences",
     version := "1.0-SNAPSHOT",

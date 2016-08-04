@@ -123,9 +123,9 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   )
 
   val outputPath = opt[File]("output",
-    descr = "Write the output to FILE",
+    descr = "Write the output to DIR",
     required = true,
-    argName = "FILE"
+    argName = "DIR"
   )
 
   val htids = trailArg[File]("htids",
