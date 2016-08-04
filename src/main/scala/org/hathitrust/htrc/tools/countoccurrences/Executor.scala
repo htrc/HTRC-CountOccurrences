@@ -1,8 +1,12 @@
 package org.hathitrust.htrc.tools.countoccurrences
 
+import org.apache.log4j.Logger
+
 import scala.util.matching.Regex
 
 object Executor {
+  @transient lazy val logger = Logger.getLogger("CountOccurrences")
+
   val HyphenWordRegex = """(?m)(\S*\p{L})-\n(\p{L}\S*)\s*""".r
 
   def normalizeText(s: String): String = {
@@ -15,8 +19,7 @@ object Executor {
 
   def countOccurrences(keywords: Seq[String], text: String): Seq[(String, Int)] = {
     val matchCounts = keywords
-      .map(_.split("""\s+""").map(Regex.quote).mkString("""\s"""))
-      .map(k => s"""\b$k\b""".r)
+      .map(_.split("""\s+""").map(Regex.quote).mkString("""\b""", """\s""", """\b""").r)
       .map(_.findAllMatchIn(text).size)
 
     keywords.zip(matchCounts)

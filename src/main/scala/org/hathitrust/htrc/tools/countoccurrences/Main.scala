@@ -4,7 +4,6 @@ import java.io.File
 
 import com.gilt.gfc.time.Timer
 import edu.illinois.i3.scala.utils.metrics.Timer.time
-import org.apache.log4j.Logger
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
@@ -28,22 +27,17 @@ object Main {
       case None => Iterator.continually(StdIn.readLine()).takeWhile(_ != null).toSeq
     }
 
-    val logger = Logger.getLogger(Main.getClass.getName)
-
     val sparkConf = new SparkConf()
     sparkConf.setIfMissing("spark.master", "local[*]")
-    sparkConf.setIfMissing("spark.app.name", "htrc-countoccurrences")
+    sparkConf.setIfMissing("spark.app.name", "count-occurrences")
 
-    val spark = SparkSession
-      .builder().config(sparkConf)
+    val spark = SparkSession.builder()
+      .config(sparkConf)
       .getOrCreate()
 
     val sc = spark.sparkContext
-    sc.setLogLevel("INFO")
 
     val (_, elapsed) = time {
-      outputPath.mkdirs()
-
       val keywords = Source.fromFile(keywordsPath)(Codec.UTF8).getLines().toSeq
       val idField = StructField("volid", StringType, nullable = false)
       val kwFields = keywords.map(StructField(_, IntegerType, nullable = false))
@@ -64,20 +58,21 @@ object Main {
 
       results.cache()
 
-      val rows = results.filter(_._2.isSuccess).map {
-        case (id, kwCounts) => Seq(id) ++ kwCounts.get.map(_._2)
-      }.map(Row(_: _*))
+      val rows = results
+        .filter(_._2.isSuccess)
+        .map {
+          case (id, kwCounts) => Seq(id) ++ kwCounts.get.map(_._2)
+        }
+        .map(Row(_: _*))
 
       val kwCountsDF = spark.createDataFrame(rows, schema)
-
-      kwCountsDF.show(10)
 
       kwCountsDF.write
         .format("com.databricks.spark.csv")
         .option("header", "true")
         .save(outputPath.toString)
 
-      results.filter(_._2.isFailure).foreach {
+      results.filter(_._2.isFailure).collect().foreach {
         case (id, Failure(err)) => logger.error(s"Error [$id]: ${err.getMessage}")
         case _ =>
       }
