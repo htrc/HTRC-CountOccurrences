@@ -36,7 +36,7 @@ lazy val `count-occurrences` = (project in file(".")).
       "of volumes and writes the result to a CSV file.",
     licenses += "Apache2" -> url("http://www.apache.org/licenses/LICENSE-2.0"),
     libraryDependencies ++= Seq(
-      "org.hathitrust.htrc"           %% "pairtree-to-text"     % "3.0.1",
+      "org.hathitrust.htrc"           %% "pairtree-to-text"     % "3.1",
       "edu.illinois.i3.scala"         %% "scala-utils"          % "1.1",
       "com.databricks"                %% "spark-csv"            % "1.4.0",
       "org.rogach"                    %% "scallop"              % "2.0.0",
