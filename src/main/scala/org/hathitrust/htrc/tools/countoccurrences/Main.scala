@@ -16,6 +16,7 @@ import scala.io.{Codec, Source, StdIn}
 import scala.util.Failure
 
 object Main {
+  val appName = "count-occurrences"
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
@@ -30,7 +31,7 @@ object Main {
 
     val sparkConf = new SparkConf()
     sparkConf.setIfMissing("spark.master", "local[*]")
-    sparkConf.setIfMissing("spark.app.name", "count-occurrences")
+    sparkConf.setIfMissing("spark.app.name", appName)
 
     val spark = SparkSession.builder()
       .config(sparkConf)
@@ -101,7 +102,7 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   version(appTitle.flatMap(
     name => appVersion.flatMap(
       version => appVendor.map(
-        vendor => s"$name $version\n$vendor"))).getOrElse("htrc-countoccurrences"))
+        vendor => s"$name $version\n$vendor"))).getOrElse(Main.appName))
 
   val numPartitions = opt[Int]("num-partitions",
     descr = "The number of partitions to split the input set of HT IDs into, " +
