@@ -70,9 +70,8 @@ object Main {
       val kwCountsDF = spark.createDataFrame(rows, schema)
 
       kwCountsDF.write
-        .format("com.databricks.spark.csv")
         .option("header", "true")
-        .save(outputPath.toString)
+        .csv(outputPath.toString)
 
       results.filter(_._2.isFailure).collect().foreach {
         case (id, Failure(err)) => logger.error(s"Error [$id]: ${err.getMessage}")
