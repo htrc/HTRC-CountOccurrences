@@ -7,6 +7,7 @@ import edu.illinois.i3.scala.utils.metrics.Timer.time
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.storage.StorageLevel
 import org.hathitrust.htrc.tools.countoccurrences.Executor._
 import org.hathitrust.htrc.tools.pairtreetotext.PairtreeToText.pairtreeToText
 import org.rogach.scallop.ScallopConf
@@ -56,7 +57,8 @@ object Main {
 
       val results = ids.zip(occurrences)
 
-      results.cache()
+      results.persist(StorageLevel.MEMORY_ONLY_SER)
+      ids.unpersist()
 
       val rows = results
         .filter(_._2.isSuccess)
