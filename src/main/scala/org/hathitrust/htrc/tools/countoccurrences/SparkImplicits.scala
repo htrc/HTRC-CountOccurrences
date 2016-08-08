@@ -22,7 +22,7 @@ object SparkImplicits {
         case (s, f) =>
           val savePath = Paths.get(saveDir, f"part-$i%05d")
           for (writer <- managed(Files.newBufferedWriter(savePath, Charset.forName(charset), CREATE_NEW))) {
-            writer.write(s.map(tos).mkString("", "\n", "\n"))
+            writer.write(s.map(tos(_) + "\n").mkString)
           }
           f
       }, preservesPartitioning = true)
