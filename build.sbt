@@ -9,8 +9,7 @@ lazy val commonSettings = Seq(
   organizationName := "HathiTrust Research Center",
   organizationHomepage := Some(url("https://www.hathitrust.org/htrc")),
   scalaVersion := "2.11.8",
-  scalacOptions ++= Seq("-feature", "-language:postfixOps", "-language:implicitConversions", "-target:jvm-1.7"),
-  javacOptions ++= Seq("-source", "1.7", "-target", "1.7"),
+  scalacOptions ++= Seq("-feature", "-language:postfixOps", "-language:implicitConversions", "-target:jvm-1.8"),
   resolvers ++= Seq(
     "I3 Repository" at "http://nexus.htrc.illinois.edu/content/groups/public",
     Resolver.mavenLocal
