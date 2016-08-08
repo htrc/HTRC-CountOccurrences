@@ -9,8 +9,7 @@ lazy val commonSettings = Seq(
   organizationName := "HathiTrust Research Center",
   organizationHomepage := Some(url("https://www.hathitrust.org/htrc")),
   scalaVersion := "2.11.8",
-  scalacOptions ++= Seq("-feature", "-language:postfixOps", "-language:implicitConversions", "-target:jvm-1.7"),
-  javacOptions ++= Seq("-source", "1.7", "-target", "1.7"),
+  scalacOptions ++= Seq("-feature", "-language:postfixOps", "-language:implicitConversions", "-target:jvm-1.8"),
   resolvers ++= Seq(
     "I3 Repository" at "http://nexus.htrc.illinois.edu/content/groups/public",
     Resolver.mavenLocal
@@ -31,7 +30,7 @@ lazy val `count-occurrences` = (project in file(".")).
   //settings(spark_dev("2.0.0"): _*).
   settings(
     name := "count-occurrences",
-    version := "1.0-SNAPSHOT",
+    version := "1.0",
     description := "Counts the number of times each of the given keywords occurs in the given set" +
       "of volumes and writes the result to a CSV file.",
     licenses += "Apache2" -> url("http://www.apache.org/licenses/LICENSE-2.0"),
