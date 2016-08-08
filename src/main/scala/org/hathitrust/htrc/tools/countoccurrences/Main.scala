@@ -16,6 +16,16 @@ import scala.util.Failure
 
 import SparkImplicits._
 
+/**
+  * Given a set of terms and a set of HT volume IDs, this tool counts the number of times
+  * these terms appear in the specified volumes, and outputs the result as CSV. The first
+  * column of the CSV represents the volume ID, while the rest of the columns represent
+  * the given search terms. The (x,y) entry in the table represents the number of times
+  * term 'y' was found in volume 'x'.
+  *
+  * @author Boris Capitanu
+  */
+
 object Main {
   val appName = "count-occurrences"
 
@@ -42,6 +52,9 @@ object Main {
 
     val (_, elapsed) = time {
       val keywords = Source.fromFile(keywordsPath)(Codec.UTF8).getLines().toSeq
+
+      // set up the DataFrame schema where the first column is the volume id,
+      // with the search terms making up the rest of the columns
       val idField = StructField("volid", StringType, nullable = false)
       val kwFields = keywords.map(StructField(_, IntegerType, nullable = false))
       val schema = StructType(Seq(idField) ++ kwFields)
@@ -53,12 +66,18 @@ object Main {
 
       ids.cache()
 
+      // extract the volume text from the corresponding ZIP file in the Pairtree
       val texts = ids.map(pairtreeToText(_, pairtreeRootPath)(Codec.UTF8).map(_._2))
+
+      // do some cleaning/normalization (remove EOL hyphenation, empty lines, etc.)
       val normalizedTexts = texts.map(_.map(normalizeText))
+
+      // ... and count the number of matches of the search terms in the text
       val occurrences = normalizedTexts.map(_.map(countOccurrences(keywords, _)))
 
       val results = ids.zip(occurrences)
 
+      // write out any errors encountered and return the successfully processed volumes
       val success = results.filterOutAndSave(_._2.isFailure, s"$outputPath/errors", tos = {
         case (id, Failure(e)) =>
           val cause = Option(e.getCause).getOrElse(e)
@@ -66,6 +85,7 @@ object Main {
         case _ => "" // not gonna happen
       })
 
+      // convert them to Rows to be added to a DataFrame
       val rows = success.map {
         case (id, kwCounts) =>
           val rowData = Seq(id) ++ kwCounts.get.map(_._2)
@@ -74,6 +94,7 @@ object Main {
 
       val kwCountsDF = spark.createDataFrame(rows, schema)
 
+      // save the resulting DataFrame as CSV
       kwCountsDF.write
         .option("header", "true")
         .csv(outputPath.toString + "/matches")

@@ -13,6 +13,19 @@ object SparkImplicits {
 
   implicit class RDDEx[T:ClassTag](rdd: RDD[T]) {
 
+    /**
+      * Save all elements matching a predicate to disk and returns all elements not matching the
+      * predicate (useful for saving out failures and returning successes). This approach, while
+      * more awkward than using rdd.filter(...) twice has the benefit that it only parses the
+      * RDD once (unlike filter which needs 2-passes or caching)
+      *
+      * @param pred The predicate matching the elements to be saved to disk
+      * @param saveDir The folder where to save
+      * @param charset (optional) The character set. Defaults to UTF-8
+      * @param tos (optional) Function to convert the matched elements to String to be saved
+      *            Defaults to calling .toString() on each element.
+      * @return The RDD containing the elements not matching the predicate
+      */
     def filterOutAndSave(pred: T => Boolean,
                          saveDir: String,
                          charset: String = "UTF-8",
