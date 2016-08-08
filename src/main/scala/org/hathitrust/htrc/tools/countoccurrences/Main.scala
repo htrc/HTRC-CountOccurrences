@@ -7,13 +7,14 @@ import edu.illinois.i3.scala.utils.metrics.Timer.time
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
-import org.apache.spark.storage.StorageLevel
 import org.hathitrust.htrc.tools.countoccurrences.Executor._
 import org.hathitrust.htrc.tools.pairtreetotext.PairtreeToText.pairtreeToText
 import org.rogach.scallop.ScallopConf
 
 import scala.io.{Codec, Source, StdIn}
 import scala.util.Failure
+
+import SparkImplicits._
 
 object Main {
   val appName = "count-occurrences"
@@ -58,26 +59,24 @@ object Main {
 
       val results = ids.zip(occurrences)
 
-      results.persist(StorageLevel.MEMORY_ONLY_SER)
-      ids.unpersist()
+      val success = results.filterOutAndSave(_._2.isFailure, s"$outputPath/errors", tos = {
+        case (id, Failure(e)) =>
+          val cause = Option(e.getCause).getOrElse(e)
+          s"$id\t${cause.getMessage}"
+        case _ => "" // not gonna happen
+      })
 
-      val rows = results
-        .filter(_._2.isSuccess)
-        .map {
-          case (id, kwCounts) => Seq(id) ++ kwCounts.get.map(_._2)
-        }
-        .map(Row(_: _*))
+      val rows = success.map {
+        case (id, kwCounts) =>
+          val rowData = Seq(id) ++ kwCounts.get.map(_._2)
+          Row(rowData: _*)
+      }
 
       val kwCountsDF = spark.createDataFrame(rows, schema)
 
       kwCountsDF.write
         .option("header", "true")
-        .csv(outputPath.toString)
-
-      results.filter(_._2.isFailure).collect().foreach {
-        case (id, Failure(err)) => logger.error(s"Error [$id]: ${err.getMessage}")
-        case _ =>
-      }
+        .csv(outputPath.toString + "/matches")
     }
 
     logger.info(f"All done in ${Timer.pretty(elapsed*1e6.toLong)}")
