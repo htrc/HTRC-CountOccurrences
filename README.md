@@ -1,4 +1,4 @@
-# HTRC-CountOccurrences
+# HTRC-Tools-CountOccurrences
 Given a set of terms and a set of HT volume IDs, this tool counts the number of times
 these terms appear in the specified volumes, and outputs the result as CSV. The first
 column of the CSV represents the volume ID, while the rest of the columns represent
