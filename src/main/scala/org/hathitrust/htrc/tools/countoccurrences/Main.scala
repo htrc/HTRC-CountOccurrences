@@ -1,17 +1,18 @@
 package org.hathitrust.htrc.tools.countoccurrences
 
-import java.io.File
+import java.io.PrintWriter
 
 import com.gilt.gfc.time.Timer
 import org.apache.hadoop.fs.Path
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
+import org.hathitrust.htrc.data.ops.TextOptions
+import org.hathitrust.htrc.data.{HtrcVolume, HtrcVolumeId}
 import org.hathitrust.htrc.tools.countoccurrences.Helper._
-import org.hathitrust.htrc.tools.pairtreetotext.{HTRCVolume, TextOptions}
+import org.hathitrust.htrc.tools.scala.io.IOUtils.using
 import org.hathitrust.htrc.tools.spark.errorhandling.ErrorAccumulator
 import org.hathitrust.htrc.tools.spark.errorhandling.RddExtensions._
-import org.rogach.scallop.{ScallopConf, ScallopOption}
 
 import scala.io.{Codec, Source, StdIn}
 
@@ -35,18 +36,26 @@ import scala.io.{Codec, Source, StdIn}
 object Main {
   val appName = "count-occurrences"
 
+  def stopSparkAndExit(sc: SparkContext, exitCode: Int = 0): Unit = {
+    try {
+      sc.stop()
+    }
+    finally {
+      System.exit(exitCode)
+    }
+  }
+
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
+    val numPartitions = conf.numPartitions.toOption
+    val numCores = conf.numCores.map(_.toString).getOrElse("*")
     val pairtreeRootPath = conf.pairtreeRootPath().toString
     val keywordsPath = conf.keywordsPath()
     val outputPath = conf.outputPath().toString
-    val numPartitions = conf.numPartitions.toOption
     val htids = conf.htids.toOption match {
-      case Some(file) => Source.fromFile(file).getLines().toSeq
+      case Some(file) => using(Source.fromFile(file))(_.getLines().toList)
       case None => Iterator.continually(StdIn.readLine()).takeWhile(_ != null).toSeq
     }
-
-    conf.outputPath().mkdirs()
 
     // set up logging destination
     conf.sparkLog.toOption match {
@@ -55,151 +64,107 @@ object Main {
     }
     System.setProperty("logLevel", conf.logLevel().toUpperCase)
 
-    // set up Spark context
     val sparkConf = new SparkConf()
-    sparkConf.setIfMissing("spark.master", "local[*]")
-    sparkConf.setIfMissing("spark.app.name", appName)
+    sparkConf.setAppName(appName)
+    sparkConf.setIfMissing("spark.master", s"local[$numCores]")
+    val sparkMaster = sparkConf.get("spark.master")
 
     val spark = SparkSession.builder()
       .config(sparkConf)
       .getOrCreate()
 
+    import spark.implicits._
+
     val sc = spark.sparkContext
 
-    logger.info("Starting...")
+    try {
+      logger.info("Starting...")
+      logger.info(s"Spark master: $sparkMaster")
 
-    // record start time
-    val t0 = System.nanoTime()
+      val t0 = Timer.nanoClock()
 
-    // load the keywords and keyword regex patterns from the input file
-    val keywordPatterns = Source.fromFile(keywordsPath)(Codec.UTF8).getLines()
-      .map(_.split("\t") match {
-        case Array(name, pat) => name -> pat
-      }).toArray
+      // load the keywords and keyword regex patterns from the input file
+      val keywordPatterns = using(Source.fromFile(keywordsPath)(Codec.UTF8)) { f =>
+        f.getLines()
+          .map(_.split("\t") match {
+            case Array(name, pat) => name -> pat
+          })
+          .toArray
+      }
 
-    val keywords = keywordPatterns.map(_._1)
-    val patterns = sc.broadcast(keywordPatterns.map(_._2))
+      val keywords = keywordPatterns.map(_._1)
+      val patterns = sc.broadcast(keywordPatterns.map(_._2))
 
-    // set up the DataFrame schema where the first column is the volume id,
-    // with the search terms making up the rest of the columns
-    val idField = StructField("volid", StringType, nullable = false)
-    val kwFields = keywords.map(StructField(_, IntegerType, nullable = false))
-    val schema = StructType(Seq(idField) ++ kwFields)
+      // set up the DataFrame schema where the first column is the volume id,
+      // with the search terms making up the rest of the columns
+      val idField = StructField("volid", StringType, nullable = false)
+      val kwFields = keywords.map(StructField(_, IntegerType, nullable = false))
+      val schema = StructType(Seq(idField) ++ kwFields)
 
-    val idsRDD = numPartitions match {
-      case Some(n) => sc.parallelize(htids, n)
-      case None => sc.parallelize(htids)
+      conf.outputPath().mkdirs()
+
+      val idsRDD = numPartitions match {
+        case Some(n) => sc.parallelize(htids, n) // split input into n partitions
+        case None => sc.parallelize(htids) // use default number of partitions
+      }
+
+      // load the HTRC volumes from pairtree (and save any errors)
+      val volumeErrAcc = new ErrorAccumulator[String, String](identity)(sc)
+      val volumesRDD = idsRDD.tryMap { id =>
+        val pairtreeVolume =
+          HtrcVolumeId
+            .parseUnclean(id)
+            .map(_.toPairtreeDoc(pairtreeRootPath))
+            .get
+
+        HtrcVolume.from(pairtreeVolume)(Codec.UTF8).get
+      }(volumeErrAcc)
+
+      // ... and count the number of matches of the search terms in the volume text
+      val errorsOccurrences = new ErrorAccumulator[HtrcVolume, String](_.volumeId.uncleanId)(sc)
+      val occurrencesRDD = volumesRDD.tryMap(vol => {
+        val text = vol.structuredPages.map(_.body(TextOptions.DehyphenateAtEol)).mkString
+        val occurrences = countOccurrences(patterns.value, text)
+        vol.volumeId.uncleanId -> occurrences
+      })(errorsOccurrences)
+
+      // convert the occurrences to Rows to be added to a DataFrame for saving to disk
+      // skip any rows that did not match any of the searched regexes
+      val rows = occurrencesRDD
+        .collect {
+          case (id, kwCounts) if kwCounts.exists(_ > 0) =>
+            val rowData = Seq(id) ++ kwCounts
+            Row(rowData: _*)
+        }
+
+      val kwCountsDF = spark.createDataFrame(rows, schema)
+
+      // save the resulting DataFrame as CSV
+      kwCountsDF.write
+        .option("header", "false")
+        .csv(outputPath + "/matches")
+
+      using(new PrintWriter(outputPath + "/header.csv"))(_.println(schema.map(_.name).mkString(",")))
+
+      if (volumeErrAcc.nonEmpty || errorsOccurrences.nonEmpty) {
+        logger.info("Writing error report(s)...")
+        if (volumeErrAcc.nonEmpty)
+          volumeErrAcc.saveErrors(new Path(outputPath, "id_errors.txt"))
+        if (errorsOccurrences.nonEmpty)
+          errorsOccurrences.saveErrors(new Path(outputPath, "occurrences_errors.txt"))
+      }
+
+      val t1 = Timer.nanoClock()
+      val elapsed = t1 - t0
+      logger.info(f"All done in ${Timer.pretty(elapsed)}")
+    }
+    catch {
+      case e: Throwable =>
+        logger.error(s"Uncaught exception", e)
+        stopSparkAndExit(sc, exitCode = 500)
     }
 
-    // load the HTRC volumes from pairtree (and save any errors)
-    val errorsVol = new ErrorAccumulator[String, String](identity)(sc)
-    val htrcDocsRDD = idsRDD.tryMap(HTRCVolume(_, pairtreeRootPath)(Codec.UTF8))(errorsVol)
-
-    // ... and count the number of matches of the search terms in the volume text
-    val errorsOccurrences = new ErrorAccumulator[HTRCVolume, String](_.id)(sc)
-    val occurrencesRDD = htrcDocsRDD.tryMap(doc => {
-      val text = doc.getText(TextOptions.BodyOnly, TextOptions.FixHyphenation)
-      val occurrences = countOccurrences(patterns.value, text)
-      doc.id -> occurrences
-    })(errorsOccurrences)
-
-    // convert the occurrences to Rows to be added to a DataFrame for saving to disk
-    val rows = occurrencesRDD.map {
-      case (id, kwCounts) =>
-        val rowData = Seq(id) ++ kwCounts
-        Row(rowData: _*)
-    }
-
-    val kwCountsDF = spark.createDataFrame(rows, schema)
-
-    // save the resulting DataFrame as CSV
-    kwCountsDF.write
-      .option("header", "true")
-      .csv(outputPath + "/matches")
-
-    if (errorsVol.nonEmpty || errorsOccurrences.nonEmpty)
-      logger.info("Writing error report(s)...")
-
-    // save any errors to the output folder
-    if (errorsVol.nonEmpty)
-      errorsVol.saveErrors(new Path(outputPath, "volume_errors.txt"), _.toString)
-
-    if (errorsOccurrences.nonEmpty)
-      errorsOccurrences.saveErrors(new Path(outputPath, "occurrences_errors.txt"), _.toString)
-
-    // record elapsed time and report it
-    val t1 = System.nanoTime()
-    val elapsed = t1 - t0
-
-    logger.info(f"All done in ${Timer.pretty(elapsed)}")
+    stopSparkAndExit(sc)
   }
 
-}
-
-/**
-  * Command line argument configuration
-  *
-  * @param arguments The cmd line args
-  */
-class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
-  val (appTitle, appVersion, appVendor) = {
-    val p = getClass.getPackage
-    val nameOpt = Option(p).flatMap(p => Option(p.getImplementationTitle))
-    val versionOpt = Option(p).flatMap(p => Option(p.getImplementationVersion))
-    val vendorOpt = Option(p).flatMap(p => Option(p.getImplementationVendor))
-    (nameOpt, versionOpt, vendorOpt)
-  }
-
-  version(appVersion.flatMap(
-    version => appVendor.map(
-      vendor => s"${Main.appName} $version\n$vendor")).getOrElse(Main.appName))
-
-  val sparkLog: ScallopOption[String] = opt[String]("spark-log",
-    descr = "Where to write logging output from Spark to",
-    argName = "FILE",
-    noshort = true
-  )
-
-  val logLevel: ScallopOption[String] = opt[String]("log-level",
-    descr = "The application log level; one of INFO, DEBUG, OFF",
-    argName = "LEVEL",
-    default = Some("INFO"),
-    validate = level => Set("INFO", "DEBUG", "OFF").contains(level.toUpperCase)
-  )
-
-  val numPartitions: ScallopOption[Int] = opt[Int]("num-partitions",
-    descr = "The number of partitions to split the input set of HT IDs into, " +
-      "for increased parallelism",
-    required = false,
-    argName = "N",
-    validate = 0 <
-  )
-
-  val pairtreeRootPath: ScallopOption[File] = opt[File]("pairtree",
-    descr = "The path to the paitree root hierarchy to process",
-    required = true,
-    argName = "DIR"
-  )
-
-  val keywordsPath: ScallopOption[File] = opt[File]("keywords",
-    descr = "The path to the file containing the keyword patterns (one per line) to count",
-    required = true,
-    argName = "FILE"
-  )
-
-  val outputPath: ScallopOption[File] = opt[File]("output",
-    descr = "Write the output to DIR",
-    required = true,
-    argName = "DIR"
-  )
-
-  val htids: ScallopOption[File] = trailArg[File]("htids",
-    descr = "The file containing the HT IDs to be searched (if not provided, will read from stdin)",
-    required = false
-  )
-
-  validateFileExists(pairtreeRootPath)
-  validateFileExists(keywordsPath)
-  validateFileExists(htids)
-  verify()
 }
