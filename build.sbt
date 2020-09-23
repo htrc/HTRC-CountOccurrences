@@ -50,7 +50,8 @@ lazy val `count-occurrences` = (project in file("."))
   .enablePlugins(GitVersioning, GitBranchPrompt, JavaAppPackaging)
   .settings(commonSettings)
   .settings(ammoniteSettings)
-  .settings(spark("2.4.5"))
+//  .settings(spark("3.0.0"))
+  .settings(spark_dev("3.0.0"))
   .settings(
     name := "count-occurrences",
     description := "Counts the number of times each of the given keywords occurs in the given set" +
@@ -64,12 +65,13 @@ lazy val `count-occurrences` = (project in file("."))
       "com.gilt"                      %% "gfc-time"             % "0.0.7",
       "com.github.nscala-time"        %% "nscala-time"          % "2.16.0",
       "ch.qos.logback"                %  "logback-classic"      % "1.2.3",
-      "org.codehaus.janino"           %  "janino"               % "3.1.0",
+      "org.codehaus.janino"           %  "janino"               % "2.7.8",
       "org.scalacheck"                %% "scalacheck"           % "1.14.3"      % Test,
       "org.scalatest"                 %% "scalatest"            % "3.1.0"       % Test
-    ),
+    )
+    ,
     dependencyOverrides ++= Seq(
       "com.google.guava" % "guava" % "15.0",
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.1"
+//      "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.1"
     )
   )
