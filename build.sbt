@@ -8,7 +8,7 @@ lazy val commonSettings = Seq(
   organization := "org.hathitrust.htrc",
   organizationName := "HathiTrust Research Center",
   organizationHomepage := Some(url("https://www.hathitrust.org/htrc")),
-  scalaVersion := "2.12.10",
+  scalaVersion := "2.12.12",
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -34,7 +34,7 @@ lazy val ammoniteSettings = Seq(
     {
       val version = scalaBinaryVersion.value match {
         case "2.10" => "1.0.3"
-        case _ => "2.0.4"
+        case _ => "2.2.0"
       }
       "com.lihaoyi" % "ammonite" % version % Test cross CrossVersion.full
     },
@@ -50,8 +50,8 @@ lazy val `count-occurrences` = (project in file("."))
   .enablePlugins(GitVersioning, GitBranchPrompt, JavaAppPackaging)
   .settings(commonSettings)
   .settings(ammoniteSettings)
-//  .settings(spark("3.0.0"))
-  .settings(spark_dev("3.0.0"))
+  .settings(spark("3.0.1"))
+//  .settings(spark_dev("3.0.1"))
   .settings(
     name := "count-occurrences",
     description := "Counts the number of times each of the given keywords occurs in the given set" +
@@ -61,17 +61,16 @@ lazy val `count-occurrences` = (project in file("."))
       "org.hathitrust.htrc"           %% "data-model"           % "1.8.1",
       "org.hathitrust.htrc"           %% "scala-utils"          % "2.10.1",
       "org.hathitrust.htrc"           %% "spark-utils"          % "1.3",
-      "org.rogach"                    %% "scallop"              % "3.3.2",
+      "org.rogach"                    %% "scallop"              % "3.5.1",
       "com.gilt"                      %% "gfc-time"             % "0.0.7",
-      "com.github.nscala-time"        %% "nscala-time"          % "2.16.0",
+      "com.github.nscala-time"        %% "nscala-time"          % "2.26.0",
       "ch.qos.logback"                %  "logback-classic"      % "1.2.3",
-      "org.codehaus.janino"           %  "janino"               % "2.7.8",
-      "org.scalacheck"                %% "scalacheck"           % "1.14.3"      % Test,
-      "org.scalatest"                 %% "scalatest"            % "3.1.0"       % Test
+      "org.codehaus.janino"           %  "janino"               % "2.7.8",  // must be this version; 3.x has conflicts
+      "org.scalacheck"                %% "scalacheck"           % "1.15.1"      % Test,
+      "org.scalatest"                 %% "scalatest"            % "3.2.3"       % Test
     )
     ,
     dependencyOverrides ++= Seq(
       "com.google.guava" % "guava" % "15.0",
-//      "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.1"
     )
   )
