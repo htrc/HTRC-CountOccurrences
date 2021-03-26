@@ -97,7 +97,7 @@ object Main {
 
       // set up the DataFrame schema where the first column is the volume id,
       // with the search terms making up the rest of the columns
-      val idField = StructField("volid", StringType, nullable = false)
+      val idField = StructField("htid", StringType, nullable = false)
       val kwFields = keywords.map(StructField(_, IntegerType, nullable = false))
       val schema = StructType(Seq(idField) ++ kwFields)
 
