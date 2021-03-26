@@ -18,7 +18,7 @@ lazy val commonSettings = Seq(
   externalResolvers ++= Seq(
     Resolver.defaultLocal,
     Resolver.mavenLocal,
-    "HTRC Nexus Repository" at "https://nexus.htrc.illinois.edu/content/groups/public"
+    "HTRC Nexus Repository" at "https://nexus.htrc.illinois.edu/repository/maven-public"
   ),
   packageOptions in (Compile, packageBin) += Package.ManifestAttributes(
     ("Git-Sha", git.gitHeadCommit.value.getOrElse("N/A")),
