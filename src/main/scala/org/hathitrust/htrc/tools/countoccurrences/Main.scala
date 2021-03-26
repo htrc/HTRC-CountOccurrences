@@ -139,12 +139,14 @@ object Main {
 
       val kwCountsDF = spark.createDataFrame(rows, schema)
 
-      // save the resulting DataFrame as CSV
+      // save the resulting DataFrame as TSV
       kwCountsDF.write
         .option("header", "false")
+        .option("sep", "\t")
+        .option("encoding", "UTF-8")
         .csv(outputPath + "/matches")
 
-      using(new PrintWriter(outputPath + "/header.csv"))(_.println(schema.map(_.name).mkString(",")))
+      using(new PrintWriter(outputPath + "/header.tsv"))(_.println(schema.fieldNames.mkString("\t")))
 
       if (volumeErrAcc.nonEmpty || errorsOccurrences.nonEmpty) {
         logger.info("Writing error report(s)...")
